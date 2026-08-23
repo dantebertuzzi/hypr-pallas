@@ -33,8 +33,6 @@ for one desktop that happens to be published.
   were reasoned through and never executed; one boot with
   `QT_QUICK_BACKEND=software` would confirm the greeter degrades instead of
   showing a black screen.
-- **Tag the releases.** The repository has no tags: `v1.0.0` would be `e740c40`
-  and `v1.1.0` the current `main`.
 
 ## Not planned
 
