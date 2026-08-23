@@ -77,6 +77,6 @@ The version is also declared in `metadata.desktop`.
 - `QtVersion=6` in `metadata.desktop` — without it SDDM defaults to 5 and
   launches a Qt5 greeter that cannot start on a Qt6-only system.
 
-[Unreleased]: https://github.com/dantebertuzzi/hypr-pallas/compare/8bceb34...main
-[1.1.0]: https://github.com/dantebertuzzi/hypr-pallas/compare/e740c40...8bceb34
-[1.0.0]: https://github.com/dantebertuzzi/hypr-pallas/commit/e740c40
+[Unreleased]: https://github.com/dantebertuzzi/hypr-pallas/compare/v1.1.0...main
+[1.1.0]: https://github.com/dantebertuzzi/hypr-pallas/compare/v1.0.0...v1.1.0
+[1.0.0]: https://github.com/dantebertuzzi/hypr-pallas/releases/tag/v1.0.0
