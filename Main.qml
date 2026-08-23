@@ -330,8 +330,103 @@ Rectangle {
     Column {
         id: form
         anchors.centerIn: parent
-        anchors.verticalCenterOffset: 40
+        anchors.verticalCenterOffset: 0   // avatar ocupa o espaco que sobrava acima
         spacing: 10
+
+        // ---- avatar do usuario, recortado na silhueta do Arch ----
+        Item {
+            id: avatar
+            width: 160
+            height: 168            // silhueta + folga antes do primeiro campo
+            anchors.horizontalCenter: parent.horizontalCenter
+
+            readonly property string user: userField.input.text
+            // tentadas em ordem; a primeira que carregar vence. o icone
+            // generico do SDDM fica de fora de proposito: recortado na
+            // silhueta ele vira um borrao, e a inicial resolve melhor
+            // com o campo vazio a lista fica vazia: sem a guarda, o segundo
+            // caminho viraria ".face.icon", que e justamente o icone generico
+            readonly property var sources: user.length === 0 ? [] : [
+                "file:///var/lib/AccountsService/icons/" + user,
+                "file:///usr/share/sddm/faces/" + user + ".face.icon"
+            ]
+            property int srcIndex: 0
+            onUserChanged: srcIndex = 0
+
+            // silhueta do Arch: serve de fundo quando nao ha foto e, ao mesmo
+            // tempo, de mascara para recortar a foto (o MultiEffect usa o alfa)
+            Image {
+                id: archShape
+                anchors.top: parent.top
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: 160
+                height: 160
+                source: "arch-mask.png"
+                fillMode: Image.PreserveAspectFit
+                sourceSize.width: 320
+                sourceSize.height: 320
+                smooth: true
+                opacity: avImg.status === Image.Ready ? 1.0 : 0.55
+                layer.enabled: true
+
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.verticalCenterOffset: 30   // dentro do corpo do "A"
+                    visible: avImg.status !== Image.Ready
+                    text: avatar.user.length > 0 ? avatar.user.charAt(0).toUpperCase() : "?"
+                    color: ctp.subtext0
+                    font.family: "Noto Sans"
+                    font.pixelSize: 34
+                    font.weight: Font.Light
+                }
+            }
+
+            Image {
+                id: avImg
+                anchors.fill: archShape
+                source: avatar.srcIndex < avatar.sources.length
+                        ? avatar.sources[avatar.srcIndex] : ""
+                fillMode: Image.PreserveAspectCrop
+                sourceSize.width: 320
+                sourceSize.height: 320
+                asynchronous: true
+                cache: true
+                // no renderer de software o MultiEffect nao desenha: sobra a
+                // silhueta com a inicial, em vez de o avatar sumir
+                visible: false
+                onStatusChanged: {
+                    if (status === Image.Error && avatar.srcIndex < avatar.sources.length)
+                        avatar.srcIndex++
+                }
+            }
+
+            MultiEffect {
+                anchors.fill: archShape
+                source: avImg
+                maskEnabled: true
+                maskSource: archShape
+                visible: !root.swRender && avImg.status === Image.Ready
+            }
+
+            // contorno acompanhando a silhueta, por cima do recorte;
+            // pintado em tempo de execucao, em vez de cor fixa no PNG
+            Image {
+                anchors.fill: archShape
+                source: "arch-outline.png"
+                opacity: 0.70
+                fillMode: Image.PreserveAspectFit
+                sourceSize.width: 320
+                sourceSize.height: 320
+                smooth: true
+                visible: !root.swRender
+                layer.enabled: true
+                layer.effect: MultiEffect {
+                    colorization: 1.0
+                    colorizationColor: ctp.subtext0
+                }
+            }
+        }
 
         Field {
             id: userField

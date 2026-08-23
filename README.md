@@ -6,8 +6,8 @@ visually next to [Hyprland](https://hyprland.org/).
 
 ![preview](assets/preview.png)
 
-No avatar, no login button, no icon bar — just a clock, two fields, and a quiet
-session selector in the corner.
+No login button, no icon bar — just a clock, the user's picture cropped to the
+Arch silhouette, two fields, and a quiet session selector in the corner.
 
 ## Design
 
@@ -27,7 +27,8 @@ of the same desktop:
 - `qt6-declarative` (provides `QtQuick` and `QtQuick.Effects`)
 
 That is all. The theme imports only `QtQuick` and `QtQuick.Effects` and ships no
-binaries or bundled assets.
+binaries — the only bundled assets are the two small PNG masks used by the
+avatar.
 
 ## Install
 
@@ -90,6 +91,32 @@ at boot with no greeter at all.
 
 If you adapt this theme, keep the key.
 
+## Avatar
+
+The user's picture is cropped to the Arch logo silhouette instead of the usual
+circle. Two PNGs carry the shape:
+
+| File | Role |
+|---|---|
+| `arch-mask.png` | Filled silhouette. Doubles as the `MultiEffect` mask (only its alpha channel matters) and as the placeholder behind the picture. |
+| `arch-outline.png` | Ring around the silhouette, obtained by dilating the mask's alpha and subtracting the original. Tinted at runtime, so the colour is not baked into the file. |
+
+Where the picture comes from, in order:
+
+1. `/var/lib/AccountsService/icons/<user>` — what GNOME Settings writes when you
+   set a profile picture
+2. `/usr/share/sddm/faces/<user>.face.icon` — SDDM's own convention
+
+SDDM's generic `.face.icon` is deliberately *not* in that list: cropped to the
+silhouette it reads as a smudge. When no picture is found, the silhouette stays
+filled and shows the first letter of the typed name instead.
+
+The field reacts to typing, so the picture follows whichever user is entered.
+At the login screen the field already comes filled with `userModel.lastUser`.
+
+Under the software renderer `MultiEffect` draws nothing, so the crop and the
+outline are skipped and the filled silhouette with the initial is shown.
+
 ## Session selector
 
 The corner dropdown lists every session in `/usr/share/wayland-sessions` and
@@ -103,4 +130,5 @@ the session selector entirely, because their authors run a single desktop.
 
 MIT — see [LICENSE](LICENSE).
 
-The preview image shows the theme's default gradient. No wallpaper is bundled.
+The preview image shows the theme's default gradient. No wallpaper is bundled,
+and the picture in it is the empty-field placeholder, not a real avatar.
