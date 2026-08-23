@@ -28,7 +28,7 @@ Rectangle {
     readonly property real  blurR:  config.blurRadius !== undefined ? parseFloat(config.blurRadius) : 24
 
     // geometria espelhando o Hyprland
-    readonly property int radius: 10
+    readonly property int radius: 12
     readonly property int borderW: 2
 
     // Com o renderer de software o MultiEffect (shaders) nao desenha nada:
