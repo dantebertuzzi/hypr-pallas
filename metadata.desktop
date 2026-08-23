@@ -1,0 +1,12 @@
+[SddmGreeterTheme]
+Name=Hypr Pallas
+Description=Minimal Catppuccin Mocha greeter matching Hyprland
+Author=dantebertuzzi
+License=MIT
+Type=sddm-theme
+Version=1.0
+MainScript=Main.qml
+ConfigFile=theme.conf
+Theme-Id=hypr-pallas
+Theme-API=2.0
+QtVersion=6
