@@ -126,6 +126,11 @@ The corner dropdown lists every session in `/usr/share/wayland-sessions` and
 Worth checking after switching to any SDDM theme: many rice themes hide or omit
 the session selector entirely, because their authors run a single desktop.
 
+## Changelog and roadmap
+
+Release notes live in [CHANGELOG.md](CHANGELOG.md); what is worth doing next,
+and what deliberately is not, in [ROADMAP.md](ROADMAP.md).
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
