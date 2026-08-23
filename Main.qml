@@ -22,10 +22,61 @@ Rectangle {
         readonly property color yellow:   "#f9e2af"
     }
 
+    // ---- leitura do theme.conf ----
+    // chave ausente vem como undefined; chave presente mas vazia vem como "".
+    // os dois casos caem no padrao, senao um "dimOpacity=" solto no arquivo
+    // viraria NaN e apagaria o item da tela.
+    function cfgStr(value, fallback) {
+        if (value === undefined || value === null)
+            return fallback
+        var s
+        // valor com virgula chega ja fatiado numa lista, e sem os espacos que
+        // seguiam cada virgula: "dddd, d 'de' MMMM" vira ["dddd","d 'de' MMMM"].
+        // remontar com ", " devolve o texto como estava no arquivo
+        if (typeof value === "object" && value.length !== undefined) {
+            var parts = []
+            for (var i = 0; i < value.length; i++)
+                parts.push(String(value[i]))
+            s = parts.join(", ")
+        } else {
+            s = String(value)
+        }
+        return s.length > 0 ? s : fallback
+    }
+    function cfgNum(value, fallback) {
+        var n = parseFloat(value)
+        return isNaN(n) ? fallback : n
+    }
+
     // ---- valores do theme.conf, com fallback ----
     readonly property color accent: config.accent ? config.accent : ctp.blue
-    readonly property real  dimOp:  config.dimOpacity !== undefined ? parseFloat(config.dimOpacity) : 0.55
-    readonly property real  blurR:  config.blurRadius !== undefined ? parseFloat(config.blurRadius) : 24
+    readonly property real  dimOp:  cfgNum(config.dimOpacity, 0.55)
+    readonly property real  blurR:  cfgNum(config.blurRadius, 24)
+
+    // contorno do avatar: cor e opacidade, antes fixas no QML
+    readonly property color outlineColor: config.outlineColor ? config.outlineColor : ctp.subtext0
+    readonly property real  outlineOp:    cfgNum(config.outlineOpacity, 0.70)
+
+    // recorte do avatar: arch | circle | square. cada um e um par de PNGs
+    // (<forma>-mask.png e <forma>-outline.png); valor desconhecido cai no arch
+    readonly property string avatarShape: {
+        var s = cfgStr(config.avatarShape, "arch").toLowerCase()
+        return (s === "circle" || s === "square") ? s : "arch"
+    }
+
+    // ---- textos e formatos, para nao prender o tema ao pt-BR ----
+    readonly property var    uiLocale:   Qt.locale(cfgStr(config.locale, "pt_BR"))
+    readonly property string timeFormat: cfgStr(config.timeFormat, "HH:mm")
+    readonly property string dateFormat: cfgStr(config.dateFormat, "dddd, d 'de' MMMM")
+
+    readonly property string txtUser:    cfgStr(config.userPlaceholder, "usuário")
+    readonly property string txtPass:    cfgStr(config.passwordPlaceholder, "senha")
+    readonly property string txtSession: cfgStr(config.sessionLabel, "Sessão")
+    readonly property string txtSuspend: cfgStr(config.suspendLabel, "Suspender")
+    readonly property string txtReboot:  cfgStr(config.rebootLabel, "Reiniciar")
+    readonly property string txtPower:   cfgStr(config.shutdownLabel, "Desligar")
+    readonly property string txtFailed:  cfgStr(config.loginFailedMessage, "Falha na autenticação")
+    readonly property string txtCaps:    cfgStr(config.capsLockWarning, "⇪ Caps Lock ativo")
 
     // geometria espelhando o Hyprland
     readonly property int radius: 12
@@ -96,7 +147,7 @@ Rectangle {
 
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: Qt.formatDateTime(now.value, "HH:mm")
+            text: Qt.formatTime(now.value, root.timeFormat)
             color: ctp.text
             font.family: "Noto Sans"
             font.pixelSize: 84
@@ -104,7 +155,7 @@ Rectangle {
         }
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: now.value.toLocaleDateString(Qt.locale("pt_BR"), "dddd, d 'de' MMMM")
+            text: now.value.toLocaleDateString(root.uiLocale, root.dateFormat)
             color: ctp.subtext0
             font.family: "Noto Sans"
             font.pixelSize: 16
@@ -121,6 +172,8 @@ Rectangle {
         property bool isPassword: false
         property Item nextFocus: null
         property Item prevFocus: null
+        // espaco reservado a direita para o botao que o campo carrega
+        property int rightInset: isPassword ? 38 : 14
         signal accepted()
 
         width: 288
@@ -136,7 +189,7 @@ Rectangle {
             id: ti
             anchors.fill: parent
             anchors.leftMargin: 14
-            anchors.rightMargin: fld.isPassword ? 38 : 14
+            anchors.rightMargin: fld.rightInset
             verticalAlignment: TextInput.AlignVCenter
             color: ctp.text
             font.family: "Noto Sans"
@@ -148,14 +201,28 @@ Rectangle {
             passwordMaskDelay: 0
             onAccepted: fld.accepted()
 
+            // enquanto a autenticacao corre o campo apaga e para de aceitar
+            // texto, para a tela nao ficar identica a antes do Enter
+            readOnly: root.busy
+            cursorVisible: activeFocus && !root.busy
+            opacity: root.busy ? 0.45 : 1.0
+            Behavior on opacity { NumberAnimation { duration: 150 } }
+
             // navegacao por Tab / Shift+Tab entre os campos
             activeFocusOnTab: true
             KeyNavigation.tab: fld.nextFocus
             KeyNavigation.backtab: fld.prevFocus
             KeyNavigation.priority: KeyNavigation.BeforeItem
 
-            // limpa a mensagem de erro assim que o usuario volta a digitar
-            onTextChanged: if (root.msgText.length > 0) root.msgText = ""
+            // limpa a mensagem de erro assim que o usuario volta a digitar.
+            // textEdited, e nao textChanged: este ultimo tambem dispara quando
+            // onLoginFailed esvazia o campo de senha, apagando no mesmo instante
+            // a mensagem que acabara de ser posta na tela
+            onTextEdited: {
+                if (root.msgText.length > 0)
+                    root.msgText = ""
+                root.closeMenus()
+            }
 
             Text {
                 anchors.verticalCenter: parent.verticalCenter
@@ -254,6 +321,37 @@ Rectangle {
         }
     }
 
+    // anel aberto que gira enquanto o PAM decide. Canvas, e nao um shader:
+    // precisa aparecer tambem no renderer de software
+    component Spinner: Canvas {
+        id: spn
+        property color spinColor: root.accent
+        width: 16
+        height: 16
+        antialiasing: true
+
+        onSpinColorChanged: requestPaint()
+
+        onPaint: {
+            var ctx = getContext("2d")
+            ctx.reset()
+            ctx.strokeStyle = spinColor
+            ctx.lineWidth = 2
+            ctx.lineCap = "round"
+            ctx.beginPath()
+            ctx.arc(width / 2, height / 2, width / 2 - 1.5, -Math.PI / 2, Math.PI * 0.75)
+            ctx.stroke()
+        }
+
+        RotationAnimator on rotation {
+            from: 0
+            to: 360
+            duration: 850
+            loops: Animation.Infinite
+            running: spn.visible
+        }
+    }
+
     component PowerBtn: Rectangle {
         id: pbtn
         property string kind: "power"
@@ -329,6 +427,9 @@ Rectangle {
     // =====================================================
     Column {
         id: form
+        // acima do MouseArea que fecha os menus, senao a lista de contas
+        // abriria atras dele e nao receberia o clique
+        z: 20
         anchors.centerIn: parent
         anchors.verticalCenterOffset: 0   // avatar ocupa o espaco que sobrava acima
         spacing: 10
@@ -343,7 +444,7 @@ Rectangle {
             readonly property string user: userField.input.text
             // tentadas em ordem; a primeira que carregar vence. o icone
             // generico do SDDM fica de fora de proposito: recortado na
-            // silhueta ele vira um borrao, e a inicial resolve melhor
+            // forma ele vira um borrao, e a inicial resolve melhor
             // com o campo vazio a lista fica vazia: sem a guarda, o segundo
             // caminho viraria ".face.icon", que e justamente o icone generico
             readonly property var sources: user.length === 0 ? [] : [
@@ -353,27 +454,35 @@ Rectangle {
             property int srcIndex: 0
             onUserChanged: srcIndex = 0
 
-            // silhueta do Arch: serve de fundo quando nao ha foto e, ao mesmo
+            // a forma escolhida serve de fundo quando nao ha foto e, ao mesmo
             // tempo, de mascara para recortar a foto (o MultiEffect usa o alfa)
             Image {
-                id: archShape
+                id: shapeImg
                 anchors.top: parent.top
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: 160
                 height: 160
-                source: "arch-mask.png"
+                source: root.avatarShape + "-mask.png"
                 fillMode: Image.PreserveAspectFit
                 sourceSize.width: 320
                 sourceSize.height: 320
                 smooth: true
                 opacity: avImg.status === Image.Ready ? 1.0 : 0.55
-                layer.enabled: true
+                // o layer existe so para servir de mascara ao MultiEffect. no
+                // renderer de software ele nao e composto e levaria a forma
+                // junto, deixando a inicial solta no meio da tela
+                layer.enabled: !root.swRender
 
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.verticalCenter: parent.verticalCenter
-                    anchors.verticalCenterOffset: 30   // dentro do corpo do "A"
-                    visible: avImg.status !== Image.Ready
+                    // o logo do Arch e vazado no meio, entao a inicial desce
+                    // para o corpo do "A"; nas outras formas fica centrada
+                    anchors.verticalCenterOffset: root.avatarShape === "arch" ? 30 : 0
+                    // no renderer de software a foto nunca chega a ser
+                    // recortada, entao a inicial fica no lugar dela em vez de
+                    // sobrar uma forma cheia e vazia
+                    visible: root.swRender || avImg.status !== Image.Ready
                     text: avatar.user.length > 0 ? avatar.user.charAt(0).toUpperCase() : "?"
                     color: ctp.subtext0
                     font.family: "Noto Sans"
@@ -384,7 +493,7 @@ Rectangle {
 
             Image {
                 id: avImg
-                anchors.fill: archShape
+                anchors.fill: shapeImg
                 source: avatar.srcIndex < avatar.sources.length
                         ? avatar.sources[avatar.srcIndex] : ""
                 fillMode: Image.PreserveAspectCrop
@@ -402,19 +511,20 @@ Rectangle {
             }
 
             MultiEffect {
-                anchors.fill: archShape
+                anchors.fill: shapeImg
                 source: avImg
                 maskEnabled: true
-                maskSource: archShape
+                maskSource: shapeImg
                 visible: !root.swRender && avImg.status === Image.Ready
             }
 
-            // contorno acompanhando a silhueta, por cima do recorte;
-            // pintado em tempo de execucao, em vez de cor fixa no PNG
+            // contorno acompanhando a silhueta, por cima do recorte; pintado
+            // em tempo de execucao com outlineColor/outlineOpacity do theme.conf,
+            // em vez de cor fixa no PNG
             Image {
-                anchors.fill: archShape
-                source: "arch-outline.png"
-                opacity: 0.70
+                anchors.fill: shapeImg
+                source: root.avatarShape + "-outline.png"
+                opacity: root.outlineOp
                 fillMode: Image.PreserveAspectFit
                 sourceSize.width: 320
                 sourceSize.height: 320
@@ -423,23 +533,167 @@ Rectangle {
                 layer.enabled: true
                 layer.effect: MultiEffect {
                     colorization: 1.0
-                    colorizationColor: ctp.subtext0
+                    colorizationColor: root.outlineColor
                 }
             }
         }
 
         Field {
             id: userField
-            placeholder: "usuário"
+            // com a lista aberta o campo sobe acima do campo de senha, que e
+            // o irmao seguinte no Column e por isso e desenhado depois: sem
+            // isto a lista abre por tras dele
+            z: userList.visible ? 30 : 0
+            placeholder: root.txtUser
             input.text: userModel.lastUser ? userModel.lastUser : ""
             nextFocus: passField.input
             prevFocus: passField.input
             onAccepted: passField.input.forceActiveFocus()
+
+            // com mais de uma conta na maquina o campo ganha um seletor; o
+            // texto livre continua valendo, inclusive para contas que nao
+            // aparecem no userModel (as de sistema, ou com hideUsers ligado)
+            readonly property bool hasPicker: userModel.count > 1
+            rightInset: hasPicker ? 38 : 14
+
+            Rectangle {
+                width: 26; height: 26; radius: 7
+                anchors.right: parent.right
+                anchors.rightMargin: 7
+                anchors.verticalCenter: parent.verticalCenter
+                visible: userField.hasPicker
+                color: pickArea.containsMouse || userList.visible
+                       ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.20)
+                       : "transparent"
+                Behavior on color { ColorAnimation { duration: 120 } }
+
+                Text {
+                    anchors.centerIn: parent
+                    text: userList.visible ? "▴" : "▾"
+                    color: root.accent
+                    font.family: "Noto Sans"
+                    font.pixelSize: 13
+                }
+                MouseArea {
+                    id: pickArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    enabled: !root.busy
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        sessionList.visible = false
+                        userList.visible = !userList.visible
+                    }
+                }
+            }
+
+            // lista de contas, abrindo por cima do campo de senha
+            Rectangle {
+                id: userList
+                visible: false
+                width: parent.width
+                height: userCol.height + 10
+                anchors.left: parent.left
+                anchors.top: parent.bottom
+                anchors.topMargin: 8
+                radius: 10
+                color: ctp.mantle
+                border.width: 1
+                border.color: ctp.surface1
+
+                Column {
+                    id: userCol
+                    y: 5
+                    width: parent.width
+                    Repeater {
+                        model: userModel
+                        delegate: Rectangle {
+                            width: userCol.width
+                            height: 34
+                            color: rowArea.containsMouse
+                                   ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.15)
+                                   : "transparent"
+
+                            // miniatura da foto da conta, recortada em circulo.
+                            // o proprio fundo serve de mascara, o que dispensa
+                            // mais um PNG so para esta lista
+                            Item {
+                                id: thumb
+                                x: 10
+                                width: 22
+                                height: 22
+                                anchors.verticalCenter: parent.verticalCenter
+
+                                Rectangle {
+                                    id: thumbBg
+                                    anchors.fill: parent
+                                    radius: width / 2
+                                    color: ctp.surface1
+                                    layer.enabled: !root.swRender   // idem
+
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: model.name.length > 0
+                                              ? model.name.charAt(0).toUpperCase() : "?"
+                                        color: ctp.subtext0
+                                        font.family: "Noto Sans"
+                                        font.pixelSize: 11
+                                        visible: root.swRender || thumbImg.status !== Image.Ready
+                                    }
+                                }
+                                Image {
+                                    id: thumbImg
+                                    anchors.fill: thumbBg
+                                    source: model.icon ? model.icon : ""
+                                    fillMode: Image.PreserveAspectCrop
+                                    sourceSize.width: 44
+                                    sourceSize.height: 44
+                                    asynchronous: true
+                                    visible: false
+                                }
+                                MultiEffect {
+                                    anchors.fill: thumbBg
+                                    source: thumbImg
+                                    maskEnabled: true
+                                    maskSource: thumbBg
+                                    visible: !root.swRender && thumbImg.status === Image.Ready
+                                }
+                            }
+
+                            Text {
+                                anchors.left: thumb.right
+                                anchors.leftMargin: 9
+                                anchors.right: parent.right
+                                anchors.rightMargin: 10
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: model.realName && model.realName !== model.name
+                                      ? model.realName : model.name
+                                color: model.name === userField.input.text ? root.accent : ctp.text
+                                font.family: "Noto Sans"
+                                font.pixelSize: 13
+                                elide: Text.ElideRight
+                            }
+
+                            MouseArea {
+                                id: rowArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    userField.input.text = model.name
+                                    userList.visible = false
+                                    passField.input.forceActiveFocus()
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         Field {
             id: passField
-            placeholder: "senha"
+            placeholder: root.txtPass
             isPassword: true
             nextFocus: userField.input
             prevFocus: userField.input
@@ -462,11 +716,17 @@ Rectangle {
                     color: root.accent
                     font.family: "Noto Sans"
                     font.pixelSize: 16
+                    visible: !root.busy
+                }
+                Spinner {
+                    anchors.centerIn: parent
+                    visible: root.busy
                 }
                 MouseArea {
                     id: submitArea
                     anchors.fill: parent
                     hoverEnabled: true
+                    enabled: !root.busy
                     cursorShape: Qt.PointingHandCursor
                     onClicked: root.doLogin()
                 }
@@ -489,7 +749,7 @@ Rectangle {
             }
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "⇪ Caps Lock ativo"
+                text: root.txtCaps
                 color: ctp.yellow
                 font.family: "Noto Sans"
                 font.pixelSize: 12
@@ -498,12 +758,12 @@ Rectangle {
         }
     }
 
-    // fecha o seletor de sessao ao clicar em qualquer outro lugar
+    // fecha os menus abertos ao clicar em qualquer outro lugar
     MouseArea {
         anchors.fill: parent
         z: 9
-        visible: sessionList.visible
-        onClicked: sessionList.visible = false
+        visible: sessionList.visible || userList.visible
+        onClicked: root.closeMenus()
     }
 
     // =====================================================
@@ -539,7 +799,7 @@ Rectangle {
                 anchors.centerIn: parent
                 spacing: 7
                 Text {
-                    text: sessionBtn.currentName !== "" ? sessionBtn.currentName : "Sessão"
+                    text: sessionBtn.currentName !== "" ? sessionBtn.currentName : root.txtSession
                     color: ctp.subtext0
                     font.family: "Noto Sans"
                     font.pixelSize: 12
@@ -617,6 +877,68 @@ Rectangle {
             }
         }
 
+        // ---- indicador de layout de teclado ----
+        // so aparece com mais de um layout instalado; clicar cicla entre eles
+        // e o SDDM passa o escolhido adiante ao autenticar
+        Rectangle {
+            id: kbBtn
+            visible: keyboard.layouts.length > 1
+            anchors.left: sessionBtn.right
+            anchors.leftMargin: 8
+            anchors.verticalCenter: parent.verticalCenter
+            width: kbText.implicitWidth + 20
+            height: 28
+            radius: 8
+            color: kbArea.containsMouse
+                   ? Qt.rgba(ctp.surface0.r, ctp.surface0.g, ctp.surface0.b, 0.65)
+                   : "transparent"
+            Behavior on color { ColorAnimation { duration: 120 } }
+
+            readonly property int idx: keyboard.currentLayout
+            readonly property var current: (idx >= 0 && idx < keyboard.layouts.length)
+                                           ? keyboard.layouts[idx] : null
+
+            Text {
+                id: kbText
+                anchors.centerIn: parent
+                text: kbBtn.current ? kbBtn.current.shortName.toUpperCase() : ""
+                color: ctp.subtext0
+                font.family: "Noto Sans"
+                font.pixelSize: 12
+            }
+
+            // o nome completo, que as duas letras do shortName nao entregam
+            Rectangle {
+                visible: kbArea.containsMouse && kbBtn.current !== null
+                anchors.bottom: parent.top
+                anchors.bottomMargin: 8
+                anchors.left: parent.left
+                width: kbTip.implicitWidth + 16
+                height: 24
+                radius: 6
+                color: ctp.mantle
+                border.width: 1
+                border.color: ctp.surface1
+                Text {
+                    id: kbTip
+                    anchors.centerIn: parent
+                    text: kbBtn.current ? kbBtn.current.longName : ""
+                    color: ctp.subtext0
+                    font.family: "Noto Sans"
+                    font.pixelSize: 12
+                }
+            }
+
+            MouseArea {
+                id: kbArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: keyboard.currentLayout =
+                           (keyboard.currentLayout + 1) % keyboard.layouts.length
+            }
+        }
+
         // ---- botoes de energia ----
         Row {
             anchors.right: parent.right
@@ -625,19 +947,19 @@ Rectangle {
 
             PowerBtn {
                 kind: "suspend"
-                label: "Suspender"
+                label: root.txtSuspend
                 visible: sddm.canSuspend
                 onActivated: sddm.suspend()
             }
             PowerBtn {
                 kind: "reboot"
-                label: "Reiniciar"
+                label: root.txtReboot
                 visible: sddm.canReboot
                 onActivated: sddm.reboot()
             }
             PowerBtn {
                 kind: "power"
-                label: "Desligar"
+                label: root.txtPower
                 hoverColor: ctp.red
                 visible: sddm.canPowerOff
                 onActivated: sddm.powerOff()
@@ -648,9 +970,15 @@ Rectangle {
     // =====================================================
     //  Login
     // =====================================================
+    function closeMenus() {
+        sessionList.visible = false
+        userList.visible = false
+    }
+
     function doLogin() {
         if (root.busy)
             return
+        root.closeMenus()
         root.busy = true
         root.msgText = ""
         sddm.login(userField.input.text, passField.input.text, sessionBtn.currentIndex)
@@ -660,7 +988,7 @@ Rectangle {
         target: sddm
         function onLoginFailed() {
             root.busy = false
-            root.msgText = "Falha na autenticação"
+            root.msgText = root.txtFailed
             passField.input.text = ""
             passField.input.forceActiveFocus()
         }
