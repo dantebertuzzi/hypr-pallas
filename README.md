@@ -34,10 +34,22 @@ avatar.
 
 ```sh
 git clone https://github.com/dantebertuzzi/hypr-pallas.git
-sudo cp -r hypr-pallas /usr/share/sddm/themes/hypr-pallas
+cd hypr-pallas
+./install.sh
 sudo mkdir -p /etc/sddm.conf.d
 printf '[Theme]\nCurrent=hypr-pallas\n' | sudo tee /etc/sddm.conf.d/10-theme.conf
 ```
+
+`install.sh` copies the four tracked theme files and asks for `sudo` once, at
+the point it actually needs it. **Run it again after every `git pull`**: the
+greeter reads from `/usr/share/sddm/themes/`, never from your clone, so a theme
+that is current in Git can still be the old one on screen.
+
+It leaves an existing `theme.conf` alone and installs the repo's default only
+when there is none. That is deliberate — the tracked `theme.conf` ships with
+`background=` empty, so copying it over a live install would silently drop your
+wallpaper. The wallpaper itself is never touched: it is gitignored and exists
+only in the theme folder. `DESTDIR` is honoured, for packaging.
 
 Preview it without rebooting:
 
