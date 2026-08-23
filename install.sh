@@ -10,7 +10,13 @@ set -euo pipefail
 src="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 dest="${DESTDIR:-}/usr/share/sddm/themes/hypr-pallas"
 
-files=(Main.qml arch-mask.png arch-outline.png metadata.desktop)
+files=(
+    Main.qml
+    metadata.desktop
+    arch-mask.png   arch-outline.png
+    circle-mask.png circle-outline.png
+    square-mask.png square-outline.png
+)
 
 for f in "${files[@]}"; do
     [[ -f "$src/$f" ]] || { echo "erro: faltando $f em $src" >&2; exit 1; }
@@ -31,13 +37,27 @@ fi
 
 "${sudo[@]}" install -d -m 755 "$dest"
 "${sudo[@]}" install -m 644 "${files[@]/#/$src/}" "$dest/"
-echo "instalado: ${files[*]}"
+echo "instalado: ${#files[@]} arquivos em $dest"
 
 if [[ -f "$dest/theme.conf" ]]; then
     echo "mantido: theme.conf existente (wallpaper e ajustes locais preservados)"
 else
     "${sudo[@]}" install -m 644 "$src/theme.conf" "$dest/"
     echo "instalado: theme.conf padrao (sem wallpaper, usa o gradiente Catppuccin)"
+fi
+
+# o theme.conf existente pode ser mais velho que o do repo. como este script
+# nunca o sobrescreve, avisa quais chaves faltam: o tema cai no padrao delas,
+# e quem quiser mexer precisa acrescenta-las a mao
+missing=()
+while IFS= read -r key; do
+    grep -q "^${key}=" "$dest/theme.conf" || missing+=("$key")
+done < <(sed -n 's/^\([A-Za-z][A-Za-z0-9]*\)=.*/\1/p' "$src/theme.conf")
+if (( ${#missing[@]} )); then
+    echo
+    echo "aviso: o theme.conf instalado nao tem estas chaves: ${missing[*]}"
+    echo "       o tema usa o padrao de cada uma; para ajusta-las, copie as"
+    echo "       linhas correspondentes de $src/theme.conf"
 fi
 
 # aviso quando o theme.conf aponta para um wallpaper que nao esta la:
