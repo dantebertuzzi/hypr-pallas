@@ -3,39 +3,44 @@
 What is worth doing next, and why. Nothing here is scheduled — this is a theme
 for one desktop that happens to be published.
 
+Everything that stood here through 1.1 shipped in 1.2: the busy indicator, the
+avatar shape and outline keys, the pt-BR strings, the keyboard layout
+indicator, the account picker, and the software-renderer check — which turned
+out to be the one that mattered, since running it found the fallback broken.
+What is left is what building those turned up.
+
 ## Next
 
-- **Show that authentication is happening.** `root.busy` is already tracked and
-  guards double submits, but nothing on screen reflects it: after Enter the form
-  looks exactly as it did before, and a slow PAM stack reads as a dead greeter.
-  A spinner in the submit button, or dimming the fields, would cover it.
-- **Make the avatar shape a `theme.conf` key** (`arch`, `circle`, `square`).
-  The QML already masks against an arbitrary alpha channel, so this is a second
-  pair of PNGs and a key, not a rewrite.
-- **Expose the outline colour and opacity.** They are currently pinned to
-  `subtext0` at `0.70` in the QML, while every other colour in the theme comes
-  from `theme.conf`.
+- **The account picker is mouse-only.** The `▾` opens with a click and each row
+  answers to `MouseArea`; there is no way to open the list, walk it or pick from
+  it with the keyboard, which is the odd gap in a screen whose whole point is
+  that your hands are already on the keys. Arrow keys and Enter over a
+  `currentIndex`, plus a focus ring on the row, would close it.
 
 ## Later
 
-- **The strings are hard-coded in pt-BR** — `usuário`, `senha`, `Sessão`,
-  `Suspender`, `Reiniciar`, `Desligar`, `Falha na autenticação`,
-  `⇪ Caps Lock ativo`. Anyone else installing the theme gets a Portuguese
-  greeter. They should move to `theme.conf` keys or Qt translations.
-- **Keyboard layout indicator.** SDDM exposes `keyboard.layouts` and
-  `keyboard.currentLayout`; the theme ignores both. On a machine with more than
-  one layout there is no way to tell which one is active before typing a
-  password blind.
-- **A user list instead of a free-text field.** This machine already has two
-  accounts, and `userModel` carries the names and pictures — the field could
-  become a picker, with typing as the fallback.
-- **Verify the software-renderer path on real hardware.** The `swRender` guards
-  were reasoned through and never executed; one boot with
-  `QT_QUICK_BACKEND=software` would confirm the greeter degrades instead of
-  showing a black screen.
+- **The layout indicator has only been seen against a fake model.**
+  `sddm-greeter-qt6 --test-mode` reports `keyboard.layouts.length === 0`, so the
+  button was verified by substituting a two-entry stand-in: it renders, the
+  short name follows `currentLayout`, and the guards hold at zero layouts. What
+  a real two-layout machine does when the click writes back to
+  `keyboard.currentLayout` is still untested.
+- **A comma in a `theme.conf` value always returns followed by one space.**
+  SDDM splits values on commas and trims the pieces, and the theme rejoins them
+  with `", "` — which is right for `dateFormat=dddd, d 'de' MMMM` and wrong for
+  anyone who wants `a,b`. Escaping (`\,`) does not survive the split either: the
+  comma disappears entirely. Fixing it properly means not going through SDDM's
+  parser for these keys.
+- **A user list instead of a field, all the way.** The picker fills the text
+  field rather than replacing it, because typing has to stay for accounts that
+  `HideUsers` keeps out of `userModel`. A theme that knew it had every account
+  could drop the field and show faces.
 
 ## Not planned
 
 - **Bundling a wallpaper.** `theme.conf` takes any path, and shipping an image
   would put megabytes into every clone. The preview in the README uses the
   default gradient for the same reason.
+- **Translating through Qt's `.qm` files.** The strings are `theme.conf` keys
+  now, which is the same edit-one-file workflow as the rest of the theme and
+  needs no build step. A greeter with eight strings does not need `lupdate`.
