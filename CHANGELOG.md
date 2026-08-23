@@ -6,6 +6,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The version is also declared in `metadata.desktop`.
 
+## [Unreleased]
+
+### Added
+
+- `install.sh`, which copies the four theme files into
+  `/usr/share/sddm/themes/hypr-pallas` and asks for `sudo` only when the
+  destination requires it, so `DESTDIR` builds run unprivileged. An existing
+  `theme.conf` is left alone and the repo's default installed only when there is
+  none: the tracked file ships with `background=` empty, so copying it over a
+  live install dropped the wallpaper. It also warns when `theme.conf` points at
+  a wallpaper that is not in the folder — the greeter says nothing and quietly
+  falls back to the gradient.
+
+### Changed
+
+- README installs with `./install.sh` instead of `sudo cp -r`, which copied
+  `.git`, the Markdown files and `assets/` into the theme folder along the way.
+  The section now says to rerun it after every `git pull`: the greeter reads
+  from `/usr/share/sddm/themes/`, never from the clone, so a theme current in
+  Git can still be the old one on screen.
+
 ## [1.1.0] - 2026-08-23
 
 ### Added
@@ -56,5 +77,6 @@ The version is also declared in `metadata.desktop`.
 - `QtVersion=6` in `metadata.desktop` — without it SDDM defaults to 5 and
   launches a Qt5 greeter that cannot start on a Qt6-only system.
 
-[1.1.0]: https://github.com/dantebertuzzi/hypr-pallas/compare/e740c40...main
+[Unreleased]: https://github.com/dantebertuzzi/hypr-pallas/compare/8bceb34...main
+[1.1.0]: https://github.com/dantebertuzzi/hypr-pallas/compare/e740c40...8bceb34
 [1.0.0]: https://github.com/dantebertuzzi/hypr-pallas/commit/e740c40
